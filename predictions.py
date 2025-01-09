@@ -5,7 +5,7 @@ import cv2
 from ultralytics import YOLO  # Import the YOLOv8 model
 
 # Load the YOLOv8 Nano model
-model = YOLO('best40_gray.pt')  # Replace with the path to your trained YOLOv8 model
+model = YOLO('best.pt')  # Replace with the path to your trained YOLOv8 model
 
 def stuff(session):
     #  tts = session.service("ALTextToSpeech")
