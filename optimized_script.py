@@ -6,9 +6,9 @@ from ultralytics import YOLO
 import signal
 import sys
 
-# Tuning constants
-k_x, k_y = 1.0, 1.0
-speed = 0.2
+
+k_x, k_y = 0.6, 0.4
+speed = 0.1
 
 # Video configuration
 RESOLUTION = 1  # VGA
@@ -35,12 +35,11 @@ def calculate_error_signal(img, results):
     box_center_y = (y1 + y2) / 2
 
     error_x = 2 * (box_center_x - frame_center_x) / frame_width
-    error_y = 2 * (box_center_y - frame_center_y) / frame_height
+    error_y = -2 * (box_center_y - frame_center_y) / frame_height
 
-    print(f"Error Signal -> X: {error_x}, Y: {error_y}")
     return error_x, error_y
 
-def head_follower(error_x, error_y, motion_proxy, threshold=0.05):
+def head_follower(error_x, error_y, motion_proxy, threshold=0.01):
     """
     Adjusts the robot's head to follow the object based on the error signal,
     but ignores insignificant errors below the specified threshold.
@@ -59,11 +58,12 @@ def head_follower(error_x, error_y, motion_proxy, threshold=0.05):
     current_pitch = motion_proxy.getAngles("HeadPitch", True)[0]
 
     # Update angles with limits
-    new_yaw = np.clip(current_yaw + yaw_adjustment, -2, 2)
-    new_pitch = np.clip(current_pitch + pitch_adjustment, -0.7, 0.4)
+    new_yaw = float(np.clip(current_yaw + yaw_adjustment, -2, 2))
+    new_pitch = float(np.clip(current_pitch + pitch_adjustment, -0.7, 0.4))
 
     # Command the robot to move
     motion_proxy.setAngles(["HeadYaw", "HeadPitch"], [new_yaw, new_pitch], speed)
+
 
 def set_led_color(session, color):
     leds = session.service("ALLeds")
@@ -75,14 +75,23 @@ def set_led_color(session, color):
 def video(session, motion_proxy):
     video = session.service("ALVideoDevice")
     video.setActiveCamera(0) 
-    id = video.subscribe("lala26", RESOLUTION, COLOR_SPACE, 5)
+    id = video.subscribe("lala42", RESOLUTION, COLOR_SPACE, 10)
 
     def signal_handler(sig, frame):
-        print("Exiting...")
+        print("Exiting program...")
+
+        # Turn the eyes white
+        set_led_color(session, 0xFFFFFF)  # White color
+
+        # Move the robot to the resting position
+        motion_proxy.rest()
+
+        # Unsubscribe from the video feed and clean up
         video.unsubscribe(id)
         cv2.destroyAllWindows()
-        sys.exit(0)
+        sys.exit(0)  # Exit the program
 
+    # Set up the signal handler for Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
 
     while True:
@@ -90,6 +99,11 @@ def video(session, motion_proxy):
         if img is None:
             continue
         img2 = np.frombuffer(img[6], dtype=np.uint8).reshape(img[1], img[0], -1)
+
+        video.releaseImages(id)
+        
+        # Convert the image to RGB
+        img2 = cv2.cvtColor(img2, cv2.COLOR_GRAY2BGR)
 
         results = model(img2.copy())
 
@@ -103,16 +117,13 @@ def video(session, motion_proxy):
         max_class_id = results[0].boxes.cls.numpy()[max_confidence_idx]
 
         if max_confidence > 0.7:
+            error_x, error_y = calculate_error_signal(img2, results)
+            head_follower(error_x, error_y, motion_proxy, threshold=0.05)
             if max_class_id == 2:  # 'standing'
-                print(f"Confidence: {max_confidence:.2f} - Standing")
                 set_led_color(session, 0x00FF00)  # Green
-                error_x, error_y = calculate_error_signal(img2, results)
-                head_follower(error_x, error_y, motion_proxy, threshold=0.05)
             elif max_class_id == 1:  # 'falling'
-                print(f"Confidence: {max_confidence:.2f} - Falling")
                 set_led_color(session, 0x0000FF)  # Blue
             elif max_class_id == 0:  # 'fallen'
-                print(f"Confidence: {max_confidence:.2f} - Fallen")
                 set_led_color(session, 0xFF0000)  # Red
 
 def set_stiffness_to_standing(motion):
@@ -127,12 +138,31 @@ def set_stiffness_to_standing(motion):
     stiffnesses = [0.8] * len(joints)
     motion.setStiffnesses(joints, stiffnesses)
 
+def move_to_standing(motion_proxy, posture_proxy):
+    """
+    Moves the NAO robot to a standing position.
+    """
+    # Wake up the robot
+    motion_proxy.wakeUp()
+
+    # Use the ALRobotPosture service to move the robot to the "StandInit" posture
+    posture_proxy.goToPosture("StandInit", 0.5)
+
 def main():
     app = qi.Application(url="tcp://10.104.64.18:9559")
     app.start()
     session = app.session
+
     motion = session.service("ALMotion")
+    posture = session.service("ALRobotPosture")
+
+    # Move the robot to a standing posture
+    move_to_standing(motion, posture)
+
+    # Ensure joints are stiff and ready for perception
     set_stiffness_to_standing(motion)
+
+    # Start the video perception loop
     video(session, motion)
 
 if __name__ == "__main__":

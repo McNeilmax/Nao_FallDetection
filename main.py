@@ -66,7 +66,7 @@ def video(session):
     resolution = 1  # VGA
     colorSpace = 0  # RGB
 
-    id = video.subscribe("lala26", resolution, colorSpace, 5)
+    id = video.subscribe("lala27", resolution, colorSpace, 5)
 
     while True:
         img = video.getImageRemote(id)
