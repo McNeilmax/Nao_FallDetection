@@ -6,6 +6,9 @@ from ultralytics import YOLO
 import signal
 import sys
 
+# Initialize the timer
+fallen_start_time = None
+alignment_duration = 10  # seconds
 
 k_x, k_y = 0.6, 0.4
 speed = 0.1
@@ -64,6 +67,27 @@ def head_follower(error_x, error_y, motion_proxy, threshold=0.01):
     # Command the robot to move
     motion_proxy.setAngles(["HeadYaw", "HeadPitch"], [new_yaw, new_pitch], speed)
 
+def align_body_with_head(motion_proxy, threshold=0.2):
+    """
+    Aligns the robot's body with the current head orientation if the head yaw
+    angle is sufficiently large (greater than the threshold).
+    """
+    # Get the current head yaw angle
+    head_yaw_angle = motion_proxy.getAngles("HeadYaw", True)[0]
+
+    # Check if the yaw angle exceeds the threshold
+    if abs(head_yaw_angle) < threshold:
+        print(f"Yaw angle too small ({head_yaw_angle:.2f}). No body alignment needed.")
+        return  # Do not perform body alignment if angle is too small
+
+    print(f"Aligning body with head yaw angle: {head_yaw_angle:.2f}")
+
+    # Command the robot to rotate its torso to align with the head yaw angle
+    motion_proxy.moveTo(0, 0, head_yaw_angle)
+
+    # Reset the head yaw to center
+    motion_proxy.setAngles("HeadYaw", 0.0, speed)
+
 
 def set_led_color(session, color):
     leds = session.service("ALLeds")
@@ -75,7 +99,7 @@ def set_led_color(session, color):
 def video(session, motion_proxy):
     video = session.service("ALVideoDevice")
     video.setActiveCamera(0) 
-    id = video.subscribe("lala53", RESOLUTION, COLOR_SPACE, 10)
+    id = video.subscribe("lala56", RESOLUTION, COLOR_SPACE, 10)
 
     def signal_handler(sig, frame):
         print("Exiting program...")
@@ -123,8 +147,10 @@ def video(session, motion_proxy):
                 set_led_color(session, 0x00FF00)  # Green
             elif max_class_id == 1:  # 'falling'
                 set_led_color(session, 0x0000FF)  # Blue
+                align_body_with_head(motion_proxy)
             elif max_class_id == 0:  # 'fallen'
                 set_led_color(session, 0xFF0000)  # Red
+                
 
 def set_stiffness_to_standing(motion):
     joints = [

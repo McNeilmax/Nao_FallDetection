@@ -60,7 +60,7 @@ def main():
     set_stiffness_to_standing(session)
 
     # Move the robot forward with a velocity of 0.2 m/s and a small rotation of 0.02 rad/s
-    move_robot(session, 0.2, -0.2, 0)
+    move_robot(session, 1, 0, -.3)
 
     # Allow the robot to move for 5 seconds
     time.sleep(5)  # The robot will move for 5 seconds
