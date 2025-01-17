@@ -7,8 +7,8 @@ import signal
 import sys
 
 # Initialize the timer
-fallen_start_time = None
-alignment_duration = 10  # seconds
+# fallen_start_time = None
+# alignment_duration = 10  # seconds
 
 k_x, k_y = 0.6, 0.4
 speed = 0.1
@@ -99,7 +99,7 @@ def set_led_color(session, color):
 def video(session, motion_proxy):
     video = session.service("ALVideoDevice")
     video.setActiveCamera(0) 
-    id = video.subscribe("lala56", RESOLUTION, COLOR_SPACE, 10)
+    id = video.subscribe("team2", RESOLUTION, COLOR_SPACE, 10)
 
     def signal_handler(sig, frame):
         print("Exiting program...")
