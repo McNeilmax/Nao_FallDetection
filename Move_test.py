@@ -87,9 +87,10 @@ def main():
     posture = session.service("ALRobotPosture")
     move_to_standing(motion, posture)# stand up from resting position
     set_stiffness_to_standing(session)
-    run_behavior(session, "animations/Stand/Waiting/FunnyDancer_1")
+    make_robot_speak(session, "Are you ok? Let me ask for help")
+    
+    run_behavior(session, "animations/Stand/Emotions/Neutral/AskForAttention_2")
     # Make the robot speak
-    make_robot_speak(session, "Robot finished moving")
 
 if __name__ == "__main__":
     main()
