@@ -1,0 +1,1 @@
+By integrating deep learning techniques YOLOv8 for fall detection, control methods for human-robot interaction, and NAO5 for autonomous assistance, this project enables autonomous emergency responses to human falls. We have successfully created an approach to developing humanoid robots for human-assistive roles using NAO 5
