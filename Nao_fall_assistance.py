@@ -1,3 +1,33 @@
+"""
+====================================================================
+NAO Humanoid Robot – Yolov8 Fall Detection & Emergency Response
+====================================================================
+
+Overview:
+This project enables the Aldebaran NAO5 humanoid robot to detect human falls 
+and autonomously respond to emergencies. Using a YOLO-based deep learning model 
+for posture classification, the system processes real-time video input to identify 
+fallen individuals. NAO reacts through head tracking, body alignment, and walking 
+mechanisms, engaging in interactive assistance behaviors. The integration of 
+computer vision, proportional control, and robotic actuation enhances situational 
+awareness and emergency response efficiency.
+
+Key Features:
+- Real-time fall detection with a YOLO deep learning model.
+- Adaptive head and body control using proportional controllers.
+- Interactive emergency response via voice, gestures, and LED signals.
+- Room scanning and target localization for dynamic person tracking.
+- Autonomous walking for proximity-based assistance.
+
+Authors:
+- Omar Flores Sánchez
+- Neil Hernández Osorio
+- Yahir Ulises Villa Camorlinga
+
+Project for:
+Learning Robots Ulm MSc
+"""
+
 import qi
 import numpy as np
 import cv2
@@ -28,8 +58,7 @@ body_aligned = False
 person_reached = False
 first_fall = False
 
-###Scan Room with head global variables
-# SCANNING VARIABLES
+###Scan Room SCANNING VARIABLES 
 posiciones = SCAN_POSITIONS["angles"]
 index = 0
 direction = 1
@@ -101,10 +130,6 @@ def head_follower(error_x, error_y, motion_proxy, threshold, head_angles):
     yaw_adjustment = -head_kx * error_x
     pitch_adjustment = -head_ky * error_y
     
-
-    #current_yaw = motion_proxy.getAngles("HeadYaw", True)[0]
-    #current_pitch = motion_proxy.getAngles("HeadPitch", True)[0]
-
     # Cache current angles 
     current_yaw, current_pitch = head_angles[0], head_angles[1]
 
@@ -151,6 +176,9 @@ def make_robot_speak(session, message):
     tts.say(message)
 
 def run_behavior(session, behavior_name):
+    """
+    Run a prexisting NAO gesture
+    """
     behavior_manager = session.service("ALBehaviorManager")
     if behavior_manager.isBehaviorInstalled(behavior_name):
         behavior_manager.runBehavior(behavior_name)
@@ -198,6 +226,9 @@ def walk_to_person(session, motion_proxy, box, height_goal, walking_threshold):
     motion_proxy.move(walking_distance, 0, 0)  # Move forward in small steps
 
 def set_led_color(session, color):
+    """
+    Set a color to the NA0 LEDs found in teh Eyes
+    """
     if not isinstance(color, int) or color < 0 or color > 0xFFFFFF:
         print(f"Invalid color value: {color}")
         return
@@ -222,12 +253,12 @@ def turn_off_eyes(session):
     except Exception as e:
         print(f"Error turning off LEDs: {e}")
 
-# def find_closest_index(x):
-#     global posiciones
-    
-#     closest_index = min(range(len(posiciones)), key=lambda i: abs(posiciones[i] - x))
-#     return closest_index
 def find_closest_index(x):
+    """
+    Get the closest position defined in the look around the room routine
+    enable the robot to vist a close position defined in posiciones based
+    in the current yaw angle
+    """
     global posiciones
     
     # Find the index where x would be inserted
@@ -244,14 +275,17 @@ def find_closest_index(x):
     right = idx
     return left if abs(posiciones[left] - x) <= abs(posiciones[right] - x) else right
 
-def buscar_persona(motion_proxy):
-    
+def look_for_subject(motion_proxy):
+    """
+    Allow the robot to move head side to side (looking arround the room...
+    set neck angle (yaw) to next defined position
+    """
     global index, posiciones, direction
 
     #move head according to serch a person
     motion_proxy.setAngles(["HeadYaw", "HeadPitch"], [posiciones[index], 0.0], 0.1)
     
-    if index in {0, len(posiciones) - 1}:
+    if index in {0, len(posiciones) - 1}:#if the list index is on an edge bounce to the other direction
         direction *= -1
     index += direction
 
@@ -266,14 +300,14 @@ def get_head_angles(motion_proxy):
         return [0.0, 0.0]  # Fallback to default angles
 
 def video(session, motion_proxy):
-    #Setup
+    #Runs the whole code at a 10hz frecuency getting video and performing controll signals
     video = session.service("ALVideoDevice")
     video.setActiveCamera(0) 
     id = video.subscribe("naoFINAL1", RESOLUTION, COLOR_SPACE, FPS) # Resolution, Colorspace and Frame rate
 
     global  counter, buscando, index #Global variables for looking around the room
 
-    def signal_handler(sig, frame):
+    def signal_handler(sig, frame):# If program is end -> clen all and sit the robot
         print("Exiting program...")
         try:
             motion_proxy.rest()
@@ -301,18 +335,16 @@ def video(session, motion_proxy):
 
         video.releaseImages(id)
         
-        # Convert the image to RGB
+        # Convert the image to suported Colorspace for Yolov8 model
         img2 = cv2.cvtColor(img2, cv2.COLOR_GRAY2BGR)
 
-        #results = model(img2.copy())#Do Yolov8 model class classification inference
         results = model(img2)  # Pass image directly
-
 
         #Obtain only max confidence result parameters by custom method
         box, box_center_x, box_center_y, max_confidence, max_class_id = get_max_confidence_box(results)
-        #Threshold for min confidence of detection
+        
 
-        if box is None or max_confidence < min_confidence:
+        if box is None or max_confidence < min_confidence:#Threshold for min confidence of detection
             counter += 1 # asumes no detection or no valid detection is found
 
             if counter >= 5: #Start searching acroos the room
@@ -325,7 +357,7 @@ def video(session, motion_proxy):
                     index = find_closest_index(current_yaw) # Use it to find closes position of next looking point
                     buscando = True
                     
-                buscar_persona(motion_proxy) # Moves to the next yaw position contained in "posciciones" list
+                look_for_subject(motion_proxy) # Moves to the next yaw position contained in "posciciones" list
             continue
 
         counter = 0
@@ -334,20 +366,21 @@ def video(session, motion_proxy):
         #Get error with reaspect to head alignment
         error_x, error_y = calculate_error_signal(img2, box_center_x, box_center_y)
 
-        #Follow detction dounding box with NAO's head
+        #Follow detction bounding box with NAO's head
         head_angles = get_head_angles(motion_proxy)
         head_follower(error_x, error_y, motion_proxy, head_threshold, head_angles)
+        #Follow subject with angular body adjustment
         align_body_with_head(motion_proxy, body_threshold, head_angles[0])
+
+        # Set colors of robot's eyes based on detection
         if max_class_id == 2:  # 'standing'
-            set_led_color(session, 0x00FF00)
-            #current_led_color = 0x00FF00
+            set_led_color(session, 0x00FF00) #Green
+            
         elif max_class_id == 1:  # 'falling'
-            set_led_color(session, 0x0000FF)
-            #current_led_color = 0x0000FF
+            set_led_color(session, 0x0000FF) #Blue
 
         elif max_class_id == 0:  # 'fallen'
-            set_led_color(session, 0xFF0000)
-            # current_led_color = 0xFF0000    
+            set_led_color(session, 0xFF0000) #Red
             walk_to_person(session, motion_proxy, box, height_goal, walking_threshold)               
 
 
@@ -364,12 +397,13 @@ def main():
     app = qi.Application(url="tcp://10.104.64.18:9559")
     app.start()
     session = app.session
+
     #Movement services
     motion = session.service("ALMotion")
     posture = session.service("ALRobotPosture")
 
     turn_off_eyes(session)
-    move_to_standing(motion, posture)# stand up from resting position
+    move_to_standing(motion, posture)# Stand up from resting position
     set_stiffness_to_standing(motion)# Give actuators some stiffness
     video(session, motion)#Capture video 10 HZ
 
